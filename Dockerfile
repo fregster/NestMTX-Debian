@@ -1,5 +1,6 @@
 ARG IMAGE_PREFIX=
-ARG NODE_IMAGE=node:21-alpine
+ARG NODE_VERSION=22
+ARG NODE_IMAGE=node:${NODE_VERSION}-bookworm
 ARG BUILDPLATFORM=amd64
 FROM --platform=${BUILDPLATFORM} ${IMAGE_PREFIX}${NODE_IMAGE} AS base
 
@@ -7,29 +8,44 @@ FROM --platform=${BUILDPLATFORM} ${IMAGE_PREFIX}${NODE_IMAGE} AS base
 # Setup the Base Container
 ##################################################
 ENV LC_ALL=C.UTF-8
-RUN echo "http://dl-cdn.alpinelinux.org/alpine/edge/main" >> /etc/apk/repositories && \
-    echo "http://dl-cdn.alpinelinux.org/alpine/edge/community" >> /etc/apk/repositories && \
-    echo "http://dl-cdn.alpinelinux.org/alpine/edge/testing" >> /etc/apk/repositories && \
-    apk --no-cache add dumb-init \
+
+RUN echo "Updating core OS" && \
+    apt update && apt upgrade -y && apt install -y wget curl && apt clean
+
+RUN echo "Installing cuda drivers" && \
+    wget https://developer.download.nvidia.com/compute/cuda/repos/debian12/x86_64/cuda-keyring_1.1-1_all.deb && \
+    dpkg -i cuda-keyring_1.1-1_all.deb && \
+    apt update && \
+    apt install -y nvidia-driver-cuda cuda-toolkit && \
+    apt clean
+
+RUN echo "Installing packages..." && \
+    apt update && apt install -y dumb-init \
     openssl \
     ffmpeg \
-    gstreamer-tools \
-    gst-plugins-base \
-    gst-plugins-good \
-    gst-plugins-bad \
-    gst-plugins-ugly \
-    gst-rtsp-server \
-    gstreamer-dev \
-    gst-libav \
-    build-base \
+    libgstreamer1.0-0 \
+    libgstreamer1.0-dev \
+    gstreamer1.0-tools \
+    gstreamer1.0-rtsp \
+    gstreamer1.0-libcamera \
+    gstreamer1.0-libav \
+    gstreamer1.0-vaapi \
+    gstreamer1.0-python3-plugin-loader \
+    gstreamer1.0-plugins-base \
+    gstreamer1.0-plugins-good \
+    gstreamer1.0-plugins-bad \
+    gstreamer1.0-plugins-ugly \
+    gstreamer1.0-plugins-rtp \
+    pybuild-plugin-autopkgtest \
     python3 \
-    pkgconfig \
-    cairo-dev \
-    pango-dev \
-    jpeg-dev \
-    giflib-dev \
+    pkg-config \
+    python3-cairo-dev \
+    libsdl-pango-dev \
+    libjpeg-dev \
+    libgif-dev \
     g++ \
-    make && \
+    make \
+    && apt clean  && \
     mkdir -p /home/node/app && \
     mkdir -p /home/node/app/tmp && \
     chown -R node:node /home/node/app && \
@@ -51,7 +67,7 @@ COPY --chown=node:node ./gui/npm* ./
 COPY --chown=node:node ./gui/yarn* ./
 RUN yarn install --frozen-lockfile --production=false --ignore-engines
 COPY --chown=node:node ./gui .
-RUN yarn build
+RUN yarn build --verbose
 
 ##################################################
 # Setup Dependencies
